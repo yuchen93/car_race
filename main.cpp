@@ -6,7 +6,7 @@ and may not be redistributed without written permission.*/
 #include "SDL/SDL_image.h"
 #include <string>
 
-//The screen attributes
+//Screen attributes
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
 const int SCREEN_BPP = 32;
@@ -14,38 +14,44 @@ const int SCREEN_BPP = 32;
 //The frame rate
 const int FRAMES_PER_SECOND = 20;
 
-//The dimensions of the dot
-const int DOT_WIDTH = 20;
-const int DOT_HEIGHT = 20;
+//The attributes of the car
+const int SQUARE_WIDTH = 30;
+const int SQUARE_HEIGHT = 50;
 
 //The surfaces
-SDL_Surface *dot = NULL;
+SDL_Surface *car = NULL;
+SDL_Surface *bad_car = NULL;
 SDL_Surface *screen = NULL;
 
 //The event structure
 SDL_Event event;
 
-//The dot that will move around on the screen
-class Dot
+//The wall
+SDL_Rect left_wall;
+SDL_Rect right_wall;
+
+//The car
+class Square
 {
     private:
-    //The X and Y offsets of the dot
-    int x, y;
+    //The collision box of the car
+    SDL_Rect box;
+    SDL_Rect bad_car_box;
 
-    //The velocity of the dot
+    //The velocity of the car
     int xVel, yVel;
 
     public:
     //Initializes the variables
-    Dot();
+    Square();
 
-    //Takes key presses and adjusts the dot's velocity
+    //Takes key presses and adjusts the car's velocity
     void handle_input();
 
-    //Moves the dot
+    //Moves the car
     void move();
 
-    //Shows the dot on the screen
+    //Shows the car on the screen
     void show();
 };
 
@@ -126,6 +132,51 @@ void apply_surface( int x, int y, SDL_Surface* source, SDL_Surface* destination,
     SDL_BlitSurface( source, clip, destination, &offset );
 }
 
+bool check_collision( SDL_Rect A, SDL_Rect B )
+{
+    //The sides of the rectangles
+    int leftA, leftB;
+    int rightA, rightB;
+    int topA, topB;
+    int bottomA, bottomB;
+
+    //Calculate the sides of rect A
+    leftA = A.x;
+    rightA = A.x + A.w;
+    topA = A.y;
+    bottomA = A.y + A.h;
+
+    //Calculate the sides of rect B
+    leftB = B.x;
+    rightB = B.x + B.w;
+    topB = B.y;
+    bottomB = B.y + B.h;
+
+    //If any of the sides from A are outside of B
+    if( bottomA <= topB )
+    {
+        return false;
+    }
+
+    if( topA >= bottomB )
+    {
+        return false;
+    }
+
+    if( rightA <= leftB )
+    {
+        return false;
+    }
+
+    if( leftA >= rightB )
+    {
+        return false;
+    }
+
+    //If none of the sides from A are outside B
+    return true;
+}
+
 bool init()
 {
     //Initialize all SDL subsystems
@@ -144,7 +195,7 @@ bool init()
     }
 
     //Set the window caption
-    SDL_WM_SetCaption( "Move the Dot", NULL );
+    SDL_WM_SetCaption( "Move the Square", NULL );
 
     //If everything initialized fine
     return true;
@@ -152,11 +203,12 @@ bool init()
 
 bool load_files()
 {
-    //Load the dot image
-    dot = load_image( "tinycar.png" );
+    //Load the car image
+    car = load_image( "tinycar.png" );
+    bad_car = load_image("tinyredcar.png");
 
-    //If there was a problem in loading the dot
-    if( dot == NULL )
+    //If there was a problem in loading the car
+    if( car == NULL || bad_car == NULL)
     {
         return false;
     }
@@ -168,24 +220,34 @@ bool load_files()
 void clean_up()
 {
     //Free the surface
-    SDL_FreeSurface( dot );
+    SDL_FreeSurface( car );
+    SDL_FreeSurface( bad_car );
 
     //Quit SDL
     SDL_Quit();
 }
 
-Dot::Dot()
+Square::Square()
 {
     //Initialize the offsets
-    x = 0;
-    y = 0;
+    box.x = 50;
+    box.y = SCREEN_HEIGHT / 2;
 
+    bad_car_box.x = 100;
+    bad_car_box.y = 100;
+    
+    //Set the car's dimentions
+    box.w = SQUARE_WIDTH;
+    box.h = SQUARE_HEIGHT;
+    bad_car_box.w = SQUARE_WIDTH;
+    bad_car_box.h = SQUARE_HEIGHT;
+    
     //Initialize the velocity
     xVel = 0;
     yVel = 0;
 }
 
-void Dot::handle_input()
+void Square::handle_input()
 {
     //If a key was pressed
     if( event.type == SDL_KEYDOWN )
@@ -193,10 +255,10 @@ void Dot::handle_input()
         //Adjust the velocity
         switch( event.key.keysym.sym )
         {
-            case SDLK_UP: yVel -= DOT_HEIGHT / 2; break;
-            case SDLK_DOWN: yVel += DOT_HEIGHT / 2; break;
-            case SDLK_LEFT: xVel -= DOT_WIDTH / 2; break;
-            case SDLK_RIGHT: xVel += DOT_WIDTH / 2; break;
+            case SDLK_UP: yVel -= SQUARE_HEIGHT / 2; break;
+            case SDLK_DOWN: yVel += SQUARE_HEIGHT / 2; break;
+            case SDLK_LEFT: xVel -= SQUARE_WIDTH / 2; break;
+            case SDLK_RIGHT: xVel += SQUARE_WIDTH / 2; break;
         }
     }
     //If a key was released
@@ -205,41 +267,50 @@ void Dot::handle_input()
         //Adjust the velocity
         switch( event.key.keysym.sym )
         {
-            case SDLK_UP: yVel += DOT_HEIGHT / 2; break;
-            case SDLK_DOWN: yVel -= DOT_HEIGHT / 2; break;
-            case SDLK_LEFT: xVel += DOT_WIDTH / 2; break;
-            case SDLK_RIGHT: xVel -= DOT_WIDTH / 2; break;
+            case SDLK_UP: yVel += SQUARE_HEIGHT / 2; break;
+            case SDLK_DOWN: yVel -= SQUARE_HEIGHT / 2; break;
+            case SDLK_LEFT: xVel += SQUARE_WIDTH / 2; break;
+            case SDLK_RIGHT: xVel -= SQUARE_WIDTH / 2; break;
         }
     }
 }
 
-void Dot::move()
+void Square::move()
 {
-    //Move the dot left or right
-    x += xVel;
+    //Move the car left or right
+    box.x += xVel;
 
-    //If the dot went too far to the left or right
-    if( ( x < 0 ) || ( x + DOT_WIDTH > SCREEN_WIDTH ) )
+    //If the car went too far to the left or right or has collided with the wall
+    if( ( box.x < 0 ) || ( box.x + SQUARE_WIDTH > SCREEN_WIDTH ) || ( check_collision( box, left_wall ) )  || ( check_collision( box, right_wall ) ) )
     {
-        //move back
-        x -= xVel;
+        //Move back
+        box.x -= xVel;
     }
 
-    //Move the dot up or down
-    y += yVel;
+    //Move the car up or down
+    //box.y += yVel;
+    bad_car_box.y -=yVel;
 
-    //If the dot went too far up or down
-    if( ( y < 0 ) || ( y + DOT_HEIGHT > SCREEN_HEIGHT ) )
+    //If the car went too far up or down or has collided with the wall
+    if( ( box.y < 0 ) || ( box.y + SQUARE_HEIGHT > SCREEN_HEIGHT ) || ( check_collision( box, left_wall ) )  || ( check_collision( box, right_wall ) ) )
     {
-        //move back
-        y -= yVel;
+        //Move back
+        //box.y -= yVel;
+        bad_car_box.y += yVel;
     }
+    
+    if(bad_car_box.y <0) bad_car_box.y = SCREEN_HEIGHT;
+    if(bad_car_box.y > SCREEN_HEIGHT + SQUARE_HEIGHT){
+             bad_car_box.y = 0;
+             bad_car_box.x = rand() % (SCREEN_WIDTH/2);
+     }
 }
 
-void Dot::show()
+void Square::show()
 {
-    //Show the dot
-    apply_surface( x, y, dot, screen );
+    //Show the car
+    apply_surface( box.x, box.y, car, screen );
+    apply_surface( bad_car_box.x, bad_car_box.y, bad_car, screen );
 }
 
 Timer::Timer()
@@ -338,9 +409,11 @@ int main( int argc, char* args[] )
     //Quit flag
     bool quit = false;
 
-    //The dot that will be used
-    Dot myDot;
+    //The car
+    Square mySquare;
 
+    
+    
     //The frame rate regulator
     Timer fps;
 
@@ -356,6 +429,23 @@ int main( int argc, char* args[] )
         return 1;
     }
 
+    //Set the wall
+    right_wall.x = SCREEN_WIDTH/2;
+    right_wall.y = 0;
+    right_wall.w = SCREEN_HEIGHT/20;
+    right_wall.h = SCREEN_HEIGHT;
+    
+    left_wall.x = 0;
+    left_wall.y = 0;
+    left_wall.w = SCREEN_HEIGHT/20;
+    left_wall.h = SCREEN_HEIGHT;
+    
+    SDL_Rect canvas;
+    canvas.x = 0;
+    canvas.y = 0;
+    canvas.w = SCREEN_WIDTH/2;
+    canvas.h = SCREEN_HEIGHT;
+
     //While the user hasn't quit
     while( quit == false )
     {
@@ -365,8 +455,8 @@ int main( int argc, char* args[] )
         //While there's events to handle
         while( SDL_PollEvent( &event ) )
         {
-            //Handle events for the dot
-            myDot.handle_input();
+            //Handle events for the car
+            mySquare.handle_input();
 
             //If the user has Xed out the window
             if( event.type == SDL_QUIT )
@@ -376,14 +466,18 @@ int main( int argc, char* args[] )
             }
         }
 
-        //Move the dot
-        myDot.move();
+        //Move the car
+        mySquare.move();
 
         //Fill the screen white
         SDL_FillRect( screen, &screen->clip_rect, SDL_MapRGB( screen->format, 0xFF, 0xFF, 0xFF ) );
+        SDL_FillRect( screen, &canvas, SDL_MapRGB( screen->format, 0x00, 0x00, 0x00 ) );
+        //Show the wall
+        SDL_FillRect( screen, &left_wall, SDL_MapRGB( screen->format, 0x77, 0x77, 0x77 ) );
+        SDL_FillRect( screen, &right_wall, SDL_MapRGB( screen->format, 0x77, 0x77, 0x77 ) );
 
-        //Show the dot on the screen
-        myDot.show();
+        //Show the car on the screen
+        mySquare.show();
 
         //Update the screen
         if( SDL_Flip( screen ) == -1 )
