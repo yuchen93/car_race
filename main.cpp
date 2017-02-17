@@ -30,6 +30,11 @@ SDL_Event event;
 SDL_Rect left_wall;
 SDL_Rect right_wall;
 
+bool pressed_up = false;
+bool pressed_down = false;
+bool pressed_left = false;
+bool pressed_right = false;
+
 //The car
 class Square
 {
@@ -230,11 +235,11 @@ void clean_up()
 Square::Square()
 {
     //Initialize the offsets
-    box.x = 50;
-    box.y = SCREEN_HEIGHT / 2;
+    box.x = 3 * SCREEN_WIDTH / 12 - SQUARE_WIDTH/2;
+    box.y = 3 * SCREEN_HEIGHT / 4;
 
-    bad_car_box.x = 100;
-    bad_car_box.y = 100;
+    bad_car_box.x = SCREEN_WIDTH/12 - SQUARE_WIDTH/2;
+    bad_car_box.y = 200;
     
     //Set the car's dimentions
     box.w = SQUARE_WIDTH;
@@ -244,7 +249,7 @@ Square::Square()
     
     //Initialize the velocity
     xVel = 0;
-    yVel = 0;
+    yVel = -SQUARE_HEIGHT / 3;
 }
 
 void Square::handle_input()
@@ -255,11 +260,27 @@ void Square::handle_input()
         //Adjust the velocity
         switch( event.key.keysym.sym )
         {
-            case SDLK_UP: yVel -= SQUARE_HEIGHT / 2; break;
-            case SDLK_DOWN: yVel += SQUARE_HEIGHT / 2; break;
-            case SDLK_LEFT: xVel -= SQUARE_WIDTH / 2; break;
-            case SDLK_RIGHT: xVel += SQUARE_WIDTH / 2; break;
+            case SDLK_UP:
+                        yVel -= SQUARE_HEIGHT / 2; 
+                        pressed_up = true; 
+                        break;
+            case SDLK_DOWN: 
+                        yVel += SQUARE_HEIGHT / 2; 
+                        pressed_down = true;
+                        break;
+            case SDLK_LEFT: 
+                        if(!pressed_left) xVel =  -SCREEN_WIDTH / 12;
+                        else xVel =  0;
+                        pressed_left = true;
+                        break;
+            case SDLK_RIGHT: 
+                        if(!pressed_right) xVel = SCREEN_WIDTH / 12; 
+                        else xVel =  0;
+                        pressed_right = true;
+                        break;
         }
+        
+        
     }
     //If a key was released
     else if( event.type == SDL_KEYUP )
@@ -269,8 +290,8 @@ void Square::handle_input()
         {
             case SDLK_UP: yVel += SQUARE_HEIGHT / 2; break;
             case SDLK_DOWN: yVel -= SQUARE_HEIGHT / 2; break;
-            case SDLK_LEFT: xVel += SQUARE_WIDTH / 2; break;
-            case SDLK_RIGHT: xVel -= SQUARE_WIDTH / 2; break;
+            case SDLK_LEFT: xVel =  0; pressed_left = false; break;
+            case SDLK_RIGHT: xVel = 0; pressed_right = false; break;
         }
     }
 }
@@ -278,7 +299,10 @@ void Square::handle_input()
 void Square::move()
 {
     //Move the car left or right
+   
     box.x += xVel;
+    if( box.x > SCREEN_WIDTH / 2) box.x = SCREEN_WIDTH/12 + SCREEN_WIDTH/3 - SQUARE_WIDTH/2;
+     if( box.x < 0) box.x = SCREEN_WIDTH/12 - SQUARE_WIDTH/2;
 
     //If the car went too far to the left or right or has collided with the wall
     if( ( box.x < 0 ) || ( box.x + SQUARE_WIDTH > SCREEN_WIDTH ) || ( check_collision( box, left_wall ) )  || ( check_collision( box, right_wall ) ) )
@@ -300,10 +324,17 @@ void Square::move()
     }
     
     if(bad_car_box.y <0) bad_car_box.y = SCREEN_HEIGHT;
-    if(bad_car_box.y > SCREEN_HEIGHT + SQUARE_HEIGHT){
+    if(bad_car_box.y > SCREEN_HEIGHT + SQUARE_HEIGHT || check_collision( box, bad_car_box )){
              bad_car_box.y = 0;
-             bad_car_box.x = rand() % (SCREEN_WIDTH/2);
+             bad_car_box.x = rand() % 3 * (SCREEN_WIDTH/6) + SCREEN_WIDTH/12 - SQUARE_WIDTH/2;
      }
+     
+   /*if( check_collision( box, bad_car_box ) ){
+   //respawn car
+    box.x = 3 * SCREEN_WIDTH / 12 - SQUARE_WIDTH/2;
+    box.y = 3 * SCREEN_HEIGHT / 4;
+   
+   }*/
 }
 
 void Square::show()
@@ -432,12 +463,12 @@ int main( int argc, char* args[] )
     //Set the wall
     right_wall.x = SCREEN_WIDTH/2;
     right_wall.y = 0;
-    right_wall.w = SCREEN_HEIGHT/20;
+    right_wall.w = SCREEN_HEIGHT/40;
     right_wall.h = SCREEN_HEIGHT;
     
     left_wall.x = 0;
     left_wall.y = 0;
-    left_wall.w = SCREEN_HEIGHT/20;
+    left_wall.w = SCREEN_HEIGHT/40;
     left_wall.h = SCREEN_HEIGHT;
     
     SDL_Rect canvas;
@@ -445,6 +476,16 @@ int main( int argc, char* args[] )
     canvas.y = 0;
     canvas.w = SCREEN_WIDTH/2;
     canvas.h = SCREEN_HEIGHT;
+    
+    SDL_Rect line1, line2;
+    line1.x = SCREEN_WIDTH/6;
+    line1.y = 0;
+    line1.w = 2;
+    line1.h = SCREEN_HEIGHT;
+    line2.x = SCREEN_WIDTH/3;
+    line2.y = 0;
+    line2.w = 2;
+    line2.h = SCREEN_HEIGHT;
 
     //While the user hasn't quit
     while( quit == false )
@@ -472,6 +513,11 @@ int main( int argc, char* args[] )
         //Fill the screen white
         SDL_FillRect( screen, &screen->clip_rect, SDL_MapRGB( screen->format, 0xFF, 0xFF, 0xFF ) );
         SDL_FillRect( screen, &canvas, SDL_MapRGB( screen->format, 0x00, 0x00, 0x00 ) );
+        
+        SDL_FillRect( screen, &line1, SDL_MapRGB( screen->format, 0xFF, 0xFF, 0xFF ) );
+        SDL_FillRect( screen, &line2, SDL_MapRGB( screen->format, 0xFF, 0xFF, 0xFF ) );
+        
+        
         //Show the wall
         SDL_FillRect( screen, &left_wall, SDL_MapRGB( screen->format, 0x77, 0x77, 0x77 ) );
         SDL_FillRect( screen, &right_wall, SDL_MapRGB( screen->format, 0x77, 0x77, 0x77 ) );
