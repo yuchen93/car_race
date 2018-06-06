@@ -1,545 +1,1051 @@
-/*This source code copyrighted by Lazy Foo' Productions (2004-2013)
+/*This source code copyrighted by Lazy Foo' Productions (2004-2015)
 and may not be redistributed without written permission.*/
 
-//The headers
-#include "SDL/SDL.h"
-#include "SDL/SDL_image.h"
+//Using SDL, SDL_image, standard IO, and, strings
+#include <SDL.h>
+#include <SDL_image.h>
+#include <stdio.h>
 #include <string>
+#include <math.h>   
+#include <vector>   
 
-//Screen attributes
-const int SCREEN_WIDTH = 640;
-const int SCREEN_HEIGHT = 480;
-const int SCREEN_BPP = 32;
 
-//The frame rate
-const int FRAMES_PER_SECOND = 20;
+using namespace std;
 
-//The attributes of the car
-const int SQUARE_WIDTH = 30;
-const int SQUARE_HEIGHT = 50;
+#define PI 3.14159265
+//Screen dimension constants
+const int SCREEN_WIDTH = 240;
+const int SCREEN_HEIGHT = 240;
 
-//The surfaces
-SDL_Surface *car = NULL;
-SDL_Surface *bad_car = NULL;
-SDL_Surface *screen = NULL;
-
-//The event structure
-SDL_Event event;
-
-//The wall
-SDL_Rect left_wall;
-SDL_Rect right_wall;
-
-bool pressed_up = false;
-bool pressed_down = false;
-bool pressed_left = false;
-bool pressed_right = false;
-
-//The car
-class Square
+//Texture wrapper class
+class LTexture
 {
-    private:
-    //The collision box of the car
-    SDL_Rect box;
-    SDL_Rect bad_car_box;
+	public:
+		//Initializes variables
+		LTexture();
 
-    //The velocity of the car
-    int xVel, yVel;
+		//Deallocates memory
+		~LTexture();
 
-    public:
-    //Initializes the variables
-    Square();
+		//Loads image at specified path
+		bool loadFromFile( std::string path );
+		
+		#ifdef _SDL_TTF_H
+		//Creates image from font string
+		bool loadFromRenderedText( std::string textureText, SDL_Color textColor );
+		#endif
 
-    //Takes key presses and adjusts the car's velocity
-    void handle_input();
+		//Creates blank texture
+		bool createBlank( int width, int height, SDL_TextureAccess = SDL_TEXTUREACCESS_STREAMING );
 
-    //Moves the car
-    void move();
+		//Deallocates texture
+		void free();
 
-    //Shows the car on the screen
-    void show();
+		//Set color modulation
+		void setColor( Uint8 red, Uint8 green, Uint8 blue );
+
+		//Set blending
+		void setBlendMode( SDL_BlendMode blending );
+
+		//Set alpha modulation
+		void setAlpha( Uint8 alpha );
+		
+		//Renders texture at given point
+		void render( int x, int y, SDL_Rect* clip = NULL, double angle = 0.0, SDL_Point* center = NULL, SDL_RendererFlip flip = SDL_FLIP_NONE );
+
+		//Set self as render target
+		void setAsRenderTarget();
+
+		//Gets image dimensions
+		int getWidth();
+		int getHeight();
+
+		//Pixel manipulators
+		bool lockTexture();
+		bool unlockTexture();
+		void* getPixels();
+		void copyPixels( void* pixels );
+		int getPitch();
+		Uint32 getPixel32( unsigned int x, unsigned int y );
+
+	private:
+		//The actual hardware texture
+		SDL_Texture* mTexture;
+		void* mPixels;
+		int mPitch;
+
+		//Image dimensions
+		int mWidth;
+		int mHeight;
 };
 
-//The timer
-class Timer
+//The application time based timer
+class LTimer
 {
-    private:
-    //The clock time when the timer started
-    int startTicks;
-
-    //The ticks stored when the timer was paused
-    int pausedTicks;
-
-    //The timer status
-    bool paused;
-    bool started;
-
     public:
-    //Initializes variables
-    Timer();
+		//Initializes variables
+		LTimer();
 
-    //The various clock actions
-    void start();
-    void stop();
-    void pause();
-    void unpause();
+		//The various clock actions
+		void start();
+		void stop();
+		void pause();
+		void unpause();
 
-    //Gets the timer's time
-    int get_ticks();
+		//Gets the timer's time
+		Uint32 getTicks();
 
-    //Checks the status of the timer
-    bool is_started();
-    bool is_paused();
+		//Checks the status of the timer
+		bool isStarted();
+		bool isPaused();
+
+    private:
+		//The clock time when the timer started
+		Uint32 mStartTicks;
+
+		//The ticks stored when the timer was paused
+		Uint32 mPausedTicks;
+
+		//The timer status
+		bool mPaused;
+		bool mStarted;
 };
 
-SDL_Surface *load_image( std::string filename )
+//The dot that will move around on the screen
+class Dot
 {
-    //The image that's loaded
-    SDL_Surface* loadedImage = NULL;
+    public:
+		//The dimensions of the dot
+		static const int DOT_WIDTH = 30;
+		static const int DOT_HEIGHT = 60;
 
-    //The optimized surface that will be used
-    SDL_Surface* optimizedImage = NULL;
+		//Maximum axis velocity of the dot
+		static const int DOT_VEL = 50;
 
-    //Load the image
-    loadedImage = IMG_Load( filename.c_str() );
+		//Initializes the variables
+		Dot();
 
-    //If the image loaded
-    if( loadedImage != NULL )
-    {
-        //Create an optimized surface
-        optimizedImage = SDL_DisplayFormat( loadedImage );
+		//Takes key presses and adjusts the dot's velocity
+		void handleEvent( SDL_Event& e );
 
-        //Free the old surface
-        SDL_FreeSurface( loadedImage );
+		//Moves the dot
+		void move( float timeStep );
 
-        //If the surface was optimized
-        if( optimizedImage != NULL )
-        {
-            //Color key surface
-            SDL_SetColorKey( optimizedImage, SDL_SRCCOLORKEY, SDL_MapRGB( optimizedImage->format, 0, 0xFF, 0xFF ) );
-        }
-    }
+		//Shows the dot on the screen
+		void render();
 
-    //Return the optimized surface
-    return optimizedImage;
-}
+		float mPosX, mPosY;
+		float mVelX, mVelY;
+                float angle;
+};
 
-void apply_surface( int x, int y, SDL_Surface* source, SDL_Surface* destination, SDL_Rect* clip = NULL )
+
+class Marker
 {
-    //Holds offsets
-    SDL_Rect offset;
+    public:
+		//The dimensions of the marker
+		static const int MARKER_WIDTH = 4;
+		static const int MARKER_HEIGHT = 30;
+		//Maximum axis velocity of the marker
+		static const int MARKER_VEL = 50;
+		//Initializes the variables
+		Marker(float x_pos, float y_pos);
+		//Takes key presses and adjusts the marker's velocity
+		void handleEvent( SDL_Event& e );
+		//Moves the marker
+		void move( float timeStep );
+		//Shows the marker on the screen
+		void render();
 
-    //Get offsets
-    offset.x = x;
-    offset.y = y;
+    private:
+		float mPosX, mPosY;
+		float mVelX, mVelY;
+                float angle;
+};
 
-    //Blit
-    SDL_BlitSurface( source, clip, destination, &offset );
-}
-
-bool check_collision( SDL_Rect A, SDL_Rect B )
+class Agent
 {
-    //The sides of the rectangles
-    int leftA, leftB;
-    int rightA, rightB;
-    int topA, topB;
-    int bottomA, bottomB;
+    public:
+		//The dimensions of the agent
+		static const int MARKER_WIDTH = 30;
+		static const int MARKER_HEIGHT = 60;
+		static const int MARKER_VEL = 40;
+		//Initializes the variables
+		Agent(float x_pos, float y_pos);
+		void handleEvent( SDL_Event& e );
+		void move( float timeStep );
+		void render();
 
-    //Calculate the sides of rect A
-    leftA = A.x;
-    rightA = A.x + A.w;
-    topA = A.y;
-    bottomA = A.y + A.h;
-
-    //Calculate the sides of rect B
-    leftB = B.x;
-    rightB = B.x + B.w;
-    topB = B.y;
-    bottomB = B.y + B.h;
-
-    //If any of the sides from A are outside of B
-    if( bottomA <= topB )
-    {
-        return false;
-    }
-
-    if( topA >= bottomB )
-    {
-        return false;
-    }
-
-    if( rightA <= leftB )
-    {
-        return false;
-    }
-
-    if( leftA >= rightB )
-    {
-        return false;
-    }
-
-    //If none of the sides from A are outside B
-    return true;
-}
-
-bool init()
-{
-    //Initialize all SDL subsystems
-    if( SDL_Init( SDL_INIT_EVERYTHING ) == -1 )
-    {
-        return false;
-    }
-
-    //Set up the screen
-    screen = SDL_SetVideoMode( SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_BPP, SDL_SWSURFACE );
-
-    //If there was an error in setting up the screen
-    if( screen == NULL )
-    {
-        return false;
-    }
-
-    //Set the window caption
-    SDL_WM_SetCaption( "Move the Square", NULL );
-
-    //If everything initialized fine
-    return true;
-}
-
-bool load_files()
-{
-    //Load the car image
-    car = load_image( "tinycar.png" );
-    bad_car = load_image("tinyredcar.png");
-
-    //If there was a problem in loading the car
-    if( car == NULL || bad_car == NULL)
-    {
-        return false;
-    }
-
-    //If everything loaded fine
-    return true;
-}
-
-void clean_up()
-{
-    //Free the surface
-    SDL_FreeSurface( car );
-    SDL_FreeSurface( bad_car );
-
-    //Quit SDL
-    SDL_Quit();
-}
-
-Square::Square()
-{
-    //Initialize the offsets
-    box.x = 3 * SCREEN_WIDTH / 12 - SQUARE_WIDTH/2;
-    box.y = 3 * SCREEN_HEIGHT / 4;
-
-    bad_car_box.x = SCREEN_WIDTH/12 - SQUARE_WIDTH/2;
-    bad_car_box.y = 200;
     
-    //Set the car's dimentions
-    box.w = SQUARE_WIDTH;
-    box.h = SQUARE_HEIGHT;
-    bad_car_box.w = SQUARE_WIDTH;
-    bad_car_box.h = SQUARE_HEIGHT;
-    
-    //Initialize the velocity
-    xVel = 0;
-    yVel = -SQUARE_HEIGHT / 3;
-}
+		float mPosX, mPosY;
+		float mVelX, mVelY;
+                float angle;
+};
 
-void Square::handle_input()
+//Starts up SDL and creates window
+bool init();
+//Loads media
+bool loadMedia();
+//Frees media and shuts down SDL
+void close();
+
+//The window we'll be rendering to
+SDL_Window* gWindow = NULL;
+//The window renderer
+SDL_Renderer* gRenderer = NULL;
+
+//Scene textures
+LTexture gDotTexture;
+LTexture gAgentTexture;
+
+LTexture::LTexture()
 {
-    //If a key was pressed
-    if( event.type == SDL_KEYDOWN )
-    {
-        //Adjust the velocity
-        switch( event.key.keysym.sym )
-        {
-            case SDLK_UP:
-                        yVel -= SQUARE_HEIGHT / 2; 
-                        pressed_up = true; 
-                        break;
-            case SDLK_DOWN: 
-                        yVel += SQUARE_HEIGHT / 2; 
-                        pressed_down = true;
-                        break;
-            case SDLK_LEFT: 
-                        if(!pressed_left) xVel =  -SCREEN_WIDTH / 12;
-                        else xVel =  0;
-                        pressed_left = true;
-                        break;
-            case SDLK_RIGHT: 
-                        if(!pressed_right) xVel = SCREEN_WIDTH / 12; 
-                        else xVel =  0;
-                        pressed_right = true;
-                        break;
-        }
-        
-        
-    }
-    //If a key was released
-    else if( event.type == SDL_KEYUP )
-    {
-        //Adjust the velocity
-        switch( event.key.keysym.sym )
-        {
-            case SDLK_UP: yVel += SQUARE_HEIGHT / 2; break;
-            case SDLK_DOWN: yVel -= SQUARE_HEIGHT / 2; break;
-            case SDLK_LEFT: xVel =  0; pressed_left = false; break;
-            case SDLK_RIGHT: xVel = 0; pressed_right = false; break;
-        }
-    }
+	//Initialize
+	mTexture = NULL;
+	mWidth = 0;
+	mHeight = 0;
+	mPixels = NULL;
+	mPitch = 0;
 }
 
-void Square::move()
+LTexture::~LTexture()
 {
-    //Move the car left or right
-   
-    box.x += xVel;
-    if( box.x > SCREEN_WIDTH / 2) box.x = SCREEN_WIDTH/12 + SCREEN_WIDTH/3 - SQUARE_WIDTH/2;
-     if( box.x < 0) box.x = SCREEN_WIDTH/12 - SQUARE_WIDTH/2;
-
-    //If the car went too far to the left or right or has collided with the wall
-    if( ( box.x < 0 ) || ( box.x + SQUARE_WIDTH > SCREEN_WIDTH ) || ( check_collision( box, left_wall ) )  || ( check_collision( box, right_wall ) ) )
-    {
-        //Move back
-        box.x -= xVel;
-    }
-
-    //Move the car up or down
-    //box.y += yVel;
-    bad_car_box.y -=yVel;
-
-    //If the car went too far up or down or has collided with the wall
-    if( ( box.y < 0 ) || ( box.y + SQUARE_HEIGHT > SCREEN_HEIGHT ) || ( check_collision( box, left_wall ) )  || ( check_collision( box, right_wall ) ) )
-    {
-        //Move back
-        //box.y -= yVel;
-        bad_car_box.y += yVel;
-    }
-    
-    if(bad_car_box.y <0) bad_car_box.y = SCREEN_HEIGHT;
-    if(bad_car_box.y > SCREEN_HEIGHT + SQUARE_HEIGHT || check_collision( box, bad_car_box )){
-             bad_car_box.y = 0;
-             bad_car_box.x = rand() % 3 * (SCREEN_WIDTH/6) + SCREEN_WIDTH/12 - SQUARE_WIDTH/2;
-     }
-     
-   /*if( check_collision( box, bad_car_box ) ){
-   //respawn car
-    box.x = 3 * SCREEN_WIDTH / 12 - SQUARE_WIDTH/2;
-    box.y = 3 * SCREEN_HEIGHT / 4;
-   
-   }*/
+	//Deallocate
+	free();
 }
 
-void Square::show()
+bool LTexture::loadFromFile( std::string path )
 {
-    //Show the car
-    apply_surface( box.x, box.y, car, screen );
-    apply_surface( bad_car_box.x, bad_car_box.y, bad_car, screen );
+	//Get rid of preexisting texture
+	free();
+
+	//The final texture
+	SDL_Texture* newTexture = NULL;
+
+	//Load image at specified path
+	SDL_Surface* loadedSurface = IMG_Load( path.c_str() );
+	if( loadedSurface == NULL )
+	{
+		printf( "Unable to load image %s! SDL_image Error: %s\n", path.c_str(), IMG_GetError() );
+	}
+	else
+	{
+		//Convert surface to display format
+		SDL_Surface* formattedSurface = SDL_ConvertSurfaceFormat( loadedSurface, SDL_PIXELFORMAT_RGBA8888, NULL );
+		if( formattedSurface == NULL )
+		{
+			printf( "Unable to convert loaded surface to display format! %s\n", SDL_GetError() );
+		}
+		else
+		{
+			//Create blank streamable texture
+			newTexture = SDL_CreateTexture( gRenderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, formattedSurface->w, formattedSurface->h );
+			if( newTexture == NULL )
+			{
+				printf( "Unable to create blank texture! SDL Error: %s\n", SDL_GetError() );
+			}
+			else
+			{
+				//Enable blending on texture
+				SDL_SetTextureBlendMode( newTexture, SDL_BLENDMODE_BLEND );
+
+				//Lock texture for manipulation
+				SDL_LockTexture( newTexture, &formattedSurface->clip_rect, &mPixels, &mPitch );
+
+				//Copy loaded/formatted surface pixels
+				memcpy( mPixels, formattedSurface->pixels, formattedSurface->pitch * formattedSurface->h );
+
+				//Get image dimensions
+				mWidth = formattedSurface->w;
+				mHeight = formattedSurface->h;
+
+				//Get pixel data in editable format
+				Uint32* pixels = (Uint32*)mPixels;
+				int pixelCount = ( mPitch / 4 ) * mHeight;
+
+				//Map colors				
+				Uint32 colorKey = SDL_MapRGB( formattedSurface->format, 0, 0xFF, 0xFF );
+				Uint32 transparent = SDL_MapRGBA( formattedSurface->format, 0x00, 0xFF, 0xFF, 0x00 );
+
+				//Color key pixels
+				for( int i = 0; i < pixelCount; ++i )
+				{
+					if( pixels[ i ] == colorKey )
+					{
+						pixels[ i ] = transparent;
+					}
+				}
+
+				//Unlock texture to update
+				SDL_UnlockTexture( newTexture );
+				mPixels = NULL;
+			}
+
+			//Get rid of old formatted surface
+			SDL_FreeSurface( formattedSurface );
+		}	
+		
+		//Get rid of old loaded surface
+		SDL_FreeSurface( loadedSurface );
+	}
+
+	//Return success
+	mTexture = newTexture;
+	return mTexture != NULL;
 }
 
-Timer::Timer()
+#ifdef _SDL_TTF_H
+bool LTexture::loadFromRenderedText( std::string textureText, SDL_Color textColor )
+{
+	//Get rid of preexisting texture
+	free();
+
+	//Render text surface
+	SDL_Surface* textSurface = TTF_RenderText_Solid( gFont, textureText.c_str(), textColor );
+	if( textSurface != NULL )
+	{
+		//Create texture from surface pixels
+        mTexture = SDL_CreateTextureFromSurface( gRenderer, textSurface );
+		if( mTexture == NULL )
+		{
+			printf( "Unable to create texture from rendered text! SDL Error: %s\n", SDL_GetError() );
+		}
+		else
+		{
+			//Get image dimensions
+			mWidth = textSurface->w;
+			mHeight = textSurface->h;
+		}
+
+		//Get rid of old surface
+		SDL_FreeSurface( textSurface );
+	}
+	else
+	{
+		printf( "Unable to render text surface! SDL_ttf Error: %s\n", TTF_GetError() );
+	}
+
+	
+	//Return success
+	return mTexture != NULL;
+}
+#endif
+		
+bool LTexture::createBlank( int width, int height, SDL_TextureAccess access )
+{
+	//Create uninitialized texture
+	mTexture = SDL_CreateTexture( gRenderer, SDL_PIXELFORMAT_RGBA8888, access, width, height );
+	if( mTexture == NULL )
+	{
+		printf( "Unable to create blank texture! SDL Error: %s\n", SDL_GetError() );
+	}
+	else
+	{
+		mWidth = width;
+		mHeight = height;
+	}
+
+	return mTexture != NULL;
+}
+
+void LTexture::free()
+{
+	//Free texture if it exists
+	if( mTexture != NULL )
+	{
+		SDL_DestroyTexture( mTexture );
+		mTexture = NULL;
+		mWidth = 0;
+		mHeight = 0;
+		mPixels = NULL;
+		mPitch = 0;
+	}
+}
+
+void LTexture::setColor( Uint8 red, Uint8 green, Uint8 blue )
+{
+	//Modulate texture rgb
+	SDL_SetTextureColorMod( mTexture, red, green, blue );
+}
+
+void LTexture::setBlendMode( SDL_BlendMode blending )
+{
+	//Set blending function
+	SDL_SetTextureBlendMode( mTexture, blending );
+}
+		
+void LTexture::setAlpha( Uint8 alpha )
+{
+	//Modulate texture alpha
+	SDL_SetTextureAlphaMod( mTexture, alpha );
+}
+
+void LTexture::render( int x, int y, SDL_Rect* clip, double angle, SDL_Point* center, SDL_RendererFlip flip )
+{
+	//Set rendering space and render to screen
+	SDL_Rect renderQuad = { x, y, mWidth, mHeight };
+
+	//Set clip rendering dimensions
+	if( clip != NULL )
+	{
+		renderQuad.w = clip->w;
+		renderQuad.h = clip->h;
+	}
+
+	//Render to screen
+	SDL_RenderCopyEx( gRenderer, mTexture, clip, &renderQuad, angle, center, flip );
+}
+
+void LTexture::setAsRenderTarget()
+{
+	//Make self render target
+	SDL_SetRenderTarget( gRenderer, mTexture );
+}
+
+int LTexture::getWidth()
+{
+	return mWidth;
+}
+
+int LTexture::getHeight()
+{
+	return mHeight;
+}
+
+bool LTexture::lockTexture()
+{
+	bool success = true;
+
+	//Texture is already locked
+	if( mPixels != NULL )
+	{
+		printf( "Texture is already locked!\n" );
+		success = false;
+	}
+	//Lock texture
+	else
+	{
+		if( SDL_LockTexture( mTexture, NULL, &mPixels, &mPitch ) != 0 )
+		{
+			printf( "Unable to lock texture! %s\n", SDL_GetError() );
+			success = false;
+		}
+	}
+
+	return success;
+}
+
+bool LTexture::unlockTexture()
+{
+	bool success = true;
+
+	//Texture is not locked
+	if( mPixels == NULL )
+	{
+		printf( "Texture is not locked!\n" );
+		success = false;
+	}
+	//Unlock texture
+	else
+	{
+		SDL_UnlockTexture( mTexture );
+		mPixels = NULL;
+		mPitch = 0;
+	}
+
+	return success;
+}
+
+void* LTexture::getPixels()
+{
+	return mPixels;
+}
+
+void LTexture::copyPixels( void* pixels )
+{
+	//Texture is locked
+	if( mPixels != NULL )
+	{
+		//Copy to locked pixels
+		memcpy( mPixels, pixels, mPitch * mHeight );
+	}
+}
+
+int LTexture::getPitch()
+{
+	return mPitch;
+}
+
+Uint32 LTexture::getPixel32( unsigned int x, unsigned int y )
+{
+    //Convert the pixels to 32 bit
+    Uint32 *pixels = (Uint32*)mPixels;
+
+    //Get the pixel requested
+    return pixels[ ( y * ( mPitch / 4 ) ) + x ];
+}
+
+
+LTimer::LTimer()
 {
     //Initialize the variables
-    startTicks = 0;
-    pausedTicks = 0;
-    paused = false;
-    started = false;
+    mStartTicks = 0;
+    mPausedTicks = 0;
+
+    mPaused = false;
+    mStarted = false;
 }
 
-void Timer::start()
+void LTimer::start()
 {
     //Start the timer
-    started = true;
+    mStarted = true;
 
     //Unpause the timer
-    paused = false;
+    mPaused = false;
 
     //Get the current clock time
-    startTicks = SDL_GetTicks();
+    mStartTicks = SDL_GetTicks();
+	mPausedTicks = 0;
 }
 
-void Timer::stop()
+void LTimer::stop()
 {
     //Stop the timer
-    started = false;
+    mStarted = false;
 
     //Unpause the timer
-    paused = false;
+    mPaused = false;
+
+	//Clear tick variables
+	mStartTicks = 0;
+	mPausedTicks = 0;
 }
 
-void Timer::pause()
+void LTimer::pause()
 {
     //If the timer is running and isn't already paused
-    if( ( started == true ) && ( paused == false ) )
+    if( mStarted && !mPaused )
     {
         //Pause the timer
-        paused = true;
+        mPaused = true;
 
         //Calculate the paused ticks
-        pausedTicks = SDL_GetTicks() - startTicks;
+        mPausedTicks = SDL_GetTicks() - mStartTicks;
+		mStartTicks = 0;
     }
 }
 
-void Timer::unpause()
+void LTimer::unpause()
 {
-    //If the timer is paused
-    if( paused == true )
+    //If the timer is running and paused
+    if( mStarted && mPaused )
     {
         //Unpause the timer
-        paused = false;
+        mPaused = false;
 
         //Reset the starting ticks
-        startTicks = SDL_GetTicks() - pausedTicks;
+        mStartTicks = SDL_GetTicks() - mPausedTicks;
 
         //Reset the paused ticks
-        pausedTicks = 0;
+        mPausedTicks = 0;
     }
 }
 
-int Timer::get_ticks()
+Uint32 LTimer::getTicks()
 {
+	//The actual timer time
+	Uint32 time = 0;
+
     //If the timer is running
-    if( started == true )
+    if( mStarted )
     {
         //If the timer is paused
-        if( paused == true )
+        if( mPaused )
         {
             //Return the number of ticks when the timer was paused
-            return pausedTicks;
+            time = mPausedTicks;
         }
         else
         {
             //Return the current time minus the start time
-            return SDL_GetTicks() - startTicks;
+            time = SDL_GetTicks() - mStartTicks;
         }
     }
 
-    //If the timer isn't running
-    return 0;
+    return time;
 }
 
-bool Timer::is_started()
+bool LTimer::isStarted()
 {
-    return started;
+	//Timer is running and paused or unpaused
+    return mStarted;
 }
 
-bool Timer::is_paused()
+bool LTimer::isPaused()
 {
-    return paused;
+	//Timer is running and paused
+    return mPaused && mStarted;
+}
+
+
+Dot::Dot()
+{
+    //Initialize the position
+    mPosX = SCREEN_WIDTH/2 - DOT_WIDTH/2;
+    mPosY = 2*SCREEN_HEIGHT/3 - DOT_HEIGHT/2;
+    angle = 0;
+
+    //Initialize the velocity
+    mVelX = 0;
+    mVelY = 0;
+}
+
+void Dot::handleEvent( SDL_Event& e )
+{
+    //If a key was pressed
+	if( e.type == SDL_KEYDOWN && e.key.repeat == 0 )
+    {
+        //Adjust the velocity
+        switch( e.key.keysym.sym )
+        {
+            case SDLK_UP: mVelY -= DOT_VEL; break;
+            case SDLK_DOWN: mVelY += DOT_VEL; break;
+            case SDLK_LEFT: mVelX -= DOT_VEL; break;
+            case SDLK_RIGHT: mVelX += DOT_VEL; break;
+            //case SDLK_LEFT: mVelX -= DOT_VEL; break;
+            //case SDLK_RIGHT: mVelX += DOT_VEL; break;
+        }
+    }else if( e.type == SDL_KEYUP && e.key.repeat == 0 )
+    {
+        //Adjust the velocity
+        switch( e.key.keysym.sym )
+        {
+            case SDLK_LEFT: mVelX += DOT_VEL; break;
+            case SDLK_RIGHT: mVelX -= DOT_VEL; break;
+             case SDLK_UP: mVelY += DOT_VEL; break;
+            case SDLK_DOWN: mVelY -= DOT_VEL; break;
+        }
+    }
+    if (mVelY < -500) mVelY = -500;
+    else if (mVelY > -50) mVelY = -50;
+}
+
+void Dot::move( float timeStep )
+{
+   
+    angle += mVelX * timeStep;
+    if (mVelX == 0 && angle > 0) angle -= timeStep*20;
+    else if ( mVelX == 0 && angle < 0) angle += timeStep*20;
+    if (angle < -55) angle = -55;
+    else if (angle > 55) angle = 55;
+
+     //Move the dot left or right
+      mPosX += mVelY * timeStep * sin(-angle*PI/180);
+    //If the dot went too far to the left or right
+	if( mPosX < 0 )
+	{
+		mPosX = 0;
+	}
+	else if( mPosX > SCREEN_WIDTH - DOT_WIDTH )
+	{
+		mPosX = SCREEN_WIDTH - DOT_WIDTH;
+	}
+	
+    //Move the dot up or down
+    //  mPosY += mVelY * timeStep * cos(-angle*PI/180);
+
+    //If the dot went too far up or down
+	if( mPosY < 0 )
+	{
+		mPosY = 0;
+	}
+	else if( mPosY > SCREEN_HEIGHT - DOT_HEIGHT )
+	{
+		mPosY = SCREEN_HEIGHT - DOT_HEIGHT;
+	}
+}
+
+void Dot::render()
+{
+    //Show the dot
+	gDotTexture.render( (int)mPosX, (int)mPosY, NULL, (int)angle );
+}
+
+
+
+// MARKER
+Marker::Marker(float pos_x, float pos_y)
+{
+    //Initialize the position
+    mPosX = pos_x - MARKER_WIDTH/2;
+    mPosY = pos_y - MARKER_HEIGHT/2;
+    angle = 0;
+    //Initialize the velocity
+    mVelX = 0;
+    mVelY = 40;
+}
+
+void Marker::handleEvent( SDL_Event& e )
+{
+    //If a key was pressed
+	if( e.type == SDL_KEYDOWN && e.key.repeat == 0 )
+    {
+        //Adjust the velocity
+        switch( e.key.keysym.sym )
+        {
+            case SDLK_UP:    mVelY += MARKER_VEL; break;
+            case SDLK_DOWN:  mVelY -= MARKER_VEL; break;
+            case SDLK_LEFT:  mVelX -= MARKER_VEL; break;
+            case SDLK_RIGHT: mVelX += MARKER_VEL; break;
+        }
+        if (mVelY < 50) mVelY = 50;
+        else if (mVelY > 500) mVelY = 500;
+    }
+    //If a key was released
+    else if( e.type == SDL_KEYUP && e.key.repeat == 0 )
+    {
+        //Adjust the velocity
+        switch( e.key.keysym.sym )
+        {
+            case SDLK_UP: mVelY -= MARKER_VEL; break;
+            case SDLK_DOWN: mVelY += MARKER_VEL; break;
+            case SDLK_LEFT: mVelX += MARKER_VEL; break;
+            case SDLK_RIGHT: mVelX -= MARKER_VEL; break;
+        }
+    }
+}
+
+void Marker::move( float timeStep )
+{
+    angle += mVelX * timeStep;
+    if (mVelX == 0 && angle > 0) angle -= timeStep*20;
+    else if ( mVelX == 0 && angle < 0) angle += timeStep*20;
+    if (angle < -55) angle = -55;
+    else if (angle > 55) angle = 55;
+    //Move the marker up or down
+    mPosY += mVelY * timeStep * cos(-angle*PI/180);
+
+    //If the dot went too far up or down
+	if( mPosY < - MARKER_HEIGHT )
+	{
+		mPosY = SCREEN_HEIGHT + MARKER_HEIGHT;
+	}
+	else if( mPosY > SCREEN_HEIGHT + MARKER_HEIGHT )
+	{
+		mPosY = - MARKER_HEIGHT;
+	}
+}
+
+void Marker::render()
+{
+     //Render markers
+	SDL_SetRenderDrawColor( gRenderer, 0xFF, 0xFF, 0x22, 0xCC );
+	SDL_Rect fillRect = {(int)mPosX - MARKER_WIDTH/2, (int)mPosY - MARKER_HEIGHT/2, MARKER_WIDTH, MARKER_HEIGHT };        
+	SDL_RenderFillRect( gRenderer, &fillRect );
+
+}
+
+
+
+// Agent
+Agent::Agent(float pos_x, float pos_y)
+{
+    //Initialize the position
+    mPosX = pos_x - MARKER_WIDTH/2;
+    mPosY = pos_y - MARKER_HEIGHT/2;
+    angle = 0;
+    //Initialize the velocity
+    mVelX = 0;
+    mVelY = 20;
+}
+
+void Agent::handleEvent( SDL_Event& e )
+{
+    //If a key was pressed
+    if( e.type == SDL_KEYDOWN && e.key.repeat == 0 )
+    {
+        //Adjust the velocity
+        switch( e.key.keysym.sym )
+        {
+            case SDLK_UP: mVelY += MARKER_VEL; break;
+            case SDLK_DOWN: mVelY -= MARKER_VEL; break;
+           // case SDLK_LEFT: mVelX -= MARKER_VEL; break;
+           //  case SDLK_RIGHT: mVelX += MARKER_VEL; break;
+        }
+
+        if (mVelY < -50) mVelY = -50;
+        else if (mVelY > 200) mVelY = 200; 
+    } 
+    else if( e.type == SDL_KEYUP && e.key.repeat == 0 )
+    {
+        //Adjust the velocity
+        switch( e.key.keysym.sym )
+        {
+            case SDLK_UP: mVelY -= MARKER_VEL; break;
+            case SDLK_DOWN: mVelY += MARKER_VEL; break;
+        }
+    }
+  
+}
+
+void Agent::move( float timeStep )
+{
+   
+    //Move the marker up or down
+    mPosY += mVelY * timeStep ;
+
+    //If the dot went too far up or down
+	if( mPosY < - MARKER_HEIGHT - 20 )
+	{
+		mPosY = SCREEN_HEIGHT + MARKER_HEIGHT + rand()%20;
+                mPosX =  3 * SCREEN_WIDTH / 10 + (rand()%3) * 2 * SCREEN_WIDTH / 10 - MARKER_WIDTH/2;
+	}
+	else if( mPosY > SCREEN_HEIGHT + MARKER_HEIGHT + 20)
+	{
+		mPosY = -  MARKER_HEIGHT - rand() % 20;
+                mPosX = 3 * SCREEN_WIDTH / 10 + (rand()%3) * 2 * SCREEN_WIDTH / 10 - MARKER_WIDTH/2;
+	}
+}
+
+void Agent::render()
+{
+     //Render markers
+	gAgentTexture.render( (int)mPosX, (int)mPosY, NULL, (int)angle );
+
+}
+
+
+bool init()
+{
+	//Initialization flag
+	bool success = true;
+
+	//Initialize SDL
+	if( SDL_Init( SDL_INIT_VIDEO ) < 0 )
+	{
+		printf( "SDL could not initialize! SDL Error: %s\n", SDL_GetError() );
+		success = false;
+	}
+	else
+	{
+		//Set texture filtering to linear
+		if( !SDL_SetHint( SDL_HINT_RENDER_SCALE_QUALITY, "1" ) )
+		{
+			printf( "Warning: Linear texture filtering not enabled!" );
+		}
+
+		//Create window
+		gWindow = SDL_CreateWindow( "Car Sim", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN );
+		if( gWindow == NULL )
+		{
+			printf( "Window could not be created! SDL Error: %s\n", SDL_GetError() );
+			success = false;
+		}
+		else
+		{
+			//Create renderer for window
+			gRenderer = SDL_CreateRenderer( gWindow, -1, SDL_RENDERER_ACCELERATED );
+			if( gRenderer == NULL )
+			{
+				printf( "Renderer could not be created! SDL Error: %s\n", SDL_GetError() );
+				success = false;
+			}
+			else
+			{
+				//Initialize renderer color
+				SDL_SetRenderDrawColor( gRenderer, 0xFF, 0xFF, 0xFF, 0xFF );
+
+				//Initialize PNG loading
+				int imgFlags = IMG_INIT_PNG;
+				if( !( IMG_Init( imgFlags ) & imgFlags ) )
+				{
+					printf( "SDL_image could not initialize! SDL_image Error: %s\n", IMG_GetError() );
+					success = false;
+				}
+			}
+		}
+	}
+
+	return success;
+}
+
+bool loadMedia()
+{
+	//Loading success flag
+	bool success = true;
+	
+	//Load dot texture
+	if( !gDotTexture.loadFromFile("images/tinycar.png" ) ) 
+	{
+		printf( "Failed to load dot texture!\n" );
+		success = false;
+	}
+
+        //Load dot texture
+	if( !gAgentTexture.loadFromFile("images/tinyredcar.png" ) ) 
+	{
+		printf( "Failed to load dot texture!\n" );
+		success = false;
+	}
+        
+
+	return success;
+}
+
+void close()
+{
+	//Free loaded images
+	gDotTexture.free();
+        gAgentTexture.free();
+
+	//Destroy window	
+	SDL_DestroyRenderer( gRenderer );
+	SDL_DestroyWindow( gWindow );
+	gWindow = NULL;
+	gRenderer = NULL;
+
+	//Quit SDL subsystems
+	IMG_Quit();
+	SDL_Quit();
 }
 
 int main( int argc, char* args[] )
 {
-    //Quit flag
-    bool quit = false;
+	//Start up SDL and create window
+	if( !init() )
+	{
+		printf( "Failed to initialize!\n" );
+	}
+	else
+	{
+		//Load media
+		if( !loadMedia() )
+		{
+			printf( "Failed to load media!\n" );
+		}
+		else
+		{	
+			//Main loop flag
+			bool quit = false;
 
-    //The car
-    Square mySquare;
+			//Event handler
+			SDL_Event e;
 
-    
-    
-    //The frame rate regulator
-    Timer fps;
+			//The dot that will be moving around on the screen
+			Dot dot;
+                        const int num_markers = 10;
+                        const int num_agents = 1;
+                        
+                        Marker markers [num_markers] = {Marker(2 * SCREEN_WIDTH / 5, 0), 
+                                              Marker(2 * SCREEN_WIDTH / 5,2*SCREEN_HEIGHT/8),
+					      Marker(2 *SCREEN_WIDTH / 5,4*SCREEN_HEIGHT/8),
+			                      Marker(2 *SCREEN_WIDTH / 5,6*SCREEN_HEIGHT/8),
+			                      Marker(2 *SCREEN_WIDTH / 5, SCREEN_HEIGHT),
+                                              Marker(3 * SCREEN_WIDTH / 5, 0), 
+                                              Marker(3 * SCREEN_WIDTH / 5,2*SCREEN_HEIGHT/8),
+					      Marker(3 *SCREEN_WIDTH / 5,4*SCREEN_HEIGHT/8),
+			                      Marker(3 *SCREEN_WIDTH / 5,6*SCREEN_HEIGHT/8),
+			                      Marker(3 *SCREEN_WIDTH / 5, SCREEN_HEIGHT)};
+                        Agent agents [num_agents] = {Agent( 3 * SCREEN_WIDTH / 10 , -30)}; //,Agent( 7 * SCREEN_WIDTH / 10 , -60)};
+			//Keeps track of time between steps
+			LTimer stepTimer;
 
-    //Initialize
-    if( init() == false )
-    {
-        return 1;
-    }
+			//While application is running
+			while( !quit )
+			{
+				//Handle events on queue
+				while( SDL_PollEvent( &e ) != 0 )
+				{
+					//User requests quit
+					if( e.type == SDL_QUIT )
+					{
+						quit = true;
+					}
 
-    //Load the files
-    if( load_files() == false )
-    {
-        return 1;
-    }
+					//Handle input for the dot
+					dot.handleEvent( e );
+                                        for(int i=0;i<num_markers;i++) markers[i].handleEvent( e );
+                                        for(int i=0;i<num_agents;i++) agents[i].handleEvent( e );
+                                        
+                                        
+				}
 
-    //Set the wall
-    right_wall.x = SCREEN_WIDTH/2;
-    right_wall.y = 0;
-    right_wall.w = SCREEN_HEIGHT/40;
-    right_wall.h = SCREEN_HEIGHT;
-    
-    left_wall.x = 0;
-    left_wall.y = 0;
-    left_wall.w = SCREEN_HEIGHT/40;
-    left_wall.h = SCREEN_HEIGHT;
-    
-    SDL_Rect canvas;
-    canvas.x = 0;
-    canvas.y = 0;
-    canvas.w = SCREEN_WIDTH/2;
-    canvas.h = SCREEN_HEIGHT;
-    
-    SDL_Rect line1, line2;
-    line1.x = SCREEN_WIDTH/6;
-    line1.y = 0;
-    line1.w = 2;
-    line1.h = SCREEN_HEIGHT;
-    line2.x = SCREEN_WIDTH/3;
-    line2.y = 0;
-    line2.w = 2;
-    line2.h = SCREEN_HEIGHT;
+				//Calculate time step
+				float timeStep = stepTimer.getTicks() / 1000.f;
 
-    //While the user hasn't quit
-    while( quit == false )
-    {
-        //Start the frame timer
-        fps.start();
+				//Move for time step
+				dot.move( timeStep );
+                                for(int i=0;i<num_markers;i++) markers[i].move( timeStep );
+				for(int i=0;i<num_agents;i++) agents[i].move( timeStep );
 
-        //While there's events to handle
-        while( SDL_PollEvent( &event ) )
-        {
-            //Handle events for the car
-            mySquare.handle_input();
+				//Restart step timer
+				stepTimer.start();
+                                
 
-            //If the user has Xed out the window
-            if( event.type == SDL_QUIT )
-            {
-                //Quit the program
-                quit = true;
-            }
-        }
+				//Clear screen
+				SDL_SetRenderDrawColor( gRenderer, 0xFF, 0xFF, 0xFF, 0xFF );
+				SDL_RenderClear( gRenderer );
 
-        //Move the car
-        mySquare.move();
+                                //Render grass lanes
+                                SDL_SetRenderDrawColor( gRenderer, 0x22, 0x99, 0x22, 0xFF );
+				SDL_Rect fillRect = { 0, 0, SCREEN_WIDTH / 5, SCREEN_HEIGHT };        
+				SDL_RenderFillRect( gRenderer, &fillRect );
+                                SDL_Rect fillRect2 = { 4*SCREEN_WIDTH / 5, 0, SCREEN_WIDTH / 5, SCREEN_HEIGHT };       
+				SDL_RenderFillRect( gRenderer, &fillRect2 );
 
-        //Fill the screen white
-        SDL_FillRect( screen, &screen->clip_rect, SDL_MapRGB( screen->format, 0xFF, 0xFF, 0xFF ) );
-        SDL_FillRect( screen, &canvas, SDL_MapRGB( screen->format, 0x00, 0x00, 0x00 ) );
-        
-        SDL_FillRect( screen, &line1, SDL_MapRGB( screen->format, 0xFF, 0xFF, 0xFF ) );
-        SDL_FillRect( screen, &line2, SDL_MapRGB( screen->format, 0xFF, 0xFF, 0xFF ) );
-        
-        
-        //Show the wall
-        SDL_FillRect( screen, &left_wall, SDL_MapRGB( screen->format, 0x77, 0x77, 0x77 ) );
-        SDL_FillRect( screen, &right_wall, SDL_MapRGB( screen->format, 0x77, 0x77, 0x77 ) );
+                                //Render road lanes
+                                SDL_SetRenderDrawColor( gRenderer, 0x55, 0x55, 0x55, 0xBB );
+				SDL_Rect fillRect3 = { SCREEN_WIDTH / 5, 0, 3*SCREEN_WIDTH / 5, SCREEN_HEIGHT };        
+				SDL_RenderFillRect( gRenderer, &fillRect3 );
+                               
+                                //Render markers
+                                SDL_SetRenderDrawColor( gRenderer, 0xFF, 0xFF, 0x22, 0xCC );
+				SDL_Rect fillRect4 = { SCREEN_WIDTH / 5 - 4, 0, 8, SCREEN_HEIGHT };        
+				SDL_RenderFillRect( gRenderer, &fillRect4 );
+                                SDL_Rect fillRect5 = { 4*SCREEN_WIDTH / 5 - 4, 0, 8, SCREEN_HEIGHT };        
+				SDL_RenderFillRect( gRenderer, &fillRect5 );
+                                for(int i=0;i<num_markers;i++) markers[i].render();
+                                // HACK FOR collision check
+                                
+				for(int i=0;i<num_agents;i++){
+                                    if (abs(agents[i].mPosX - dot.mPosX) < agents[i].MARKER_WIDTH - 5 && abs(agents[i].mPosY - dot.mPosY) < agents[i].MARKER_HEIGHT - 5 ) {
+					agents[i].mPosY = -  agents[i].MARKER_HEIGHT - rand() % 20;
+					agents[i].mPosX = 3 * SCREEN_WIDTH / 10 + (rand()%3) * 2 * SCREEN_WIDTH / 10 - agents[i].MARKER_WIDTH/2;
+ 				}
+					}
+				//while( agents[0].mPosX == agents[1].mPosX && abs(agents[0].mPosY - agents[1].mPosY) < agents[0].MARKER_HEIGHT + 5 ) agents[0].mPosX = 3 * SCREEN_WIDTH / 10 + (rand()%3) * 2 * SCREEN_WIDTH / 10 - agents[0].MARKER_WIDTH/2;
+				//Render car
+				for(int i=0;i<num_agents;i++) agents[i].render();
+                                dot.render();
 
-        //Show the car on the screen
-        mySquare.show();
+				//Update screen
+				SDL_RenderPresent( gRenderer );
+                                //SDL_Surface *screen = SDL_GetWindowSurface(gWindow);
+				//IMG_SavePNG( screen, "./test_out.png");
+                                // SDL_SaveBMP(screen, "./test_out.png");
 
-        //Update the screen
-        if( SDL_Flip( screen ) == -1 )
-        {
-            return 1;
-        }
+                                
+   // Create an empty RGB surface that will be used to create the screenshot bmp file 
+   SDL_Surface* pScreenShot = SDL_GetWindowSurface(gWindow);; //SDL_CreateRGBSurface(0, SCREEN_WIDTH, SCREEN_WIDTH, 32, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000); 
 
-        //Cap the frame rate
-        if( fps.get_ticks() < 1000 / FRAMES_PER_SECOND )
-        {
-            SDL_Delay( ( 1000 / FRAMES_PER_SECOND ) - fps.get_ticks() );
-        }
-    }
+   if(pScreenShot) 
+   { 
+      // Read the pixels from the current render target and save them onto the surface 
+      SDL_RenderReadPixels(gRenderer, NULL, SDL_GetWindowPixelFormat(gWindow), pScreenShot->pixels, pScreenShot->pitch); 
 
-    //Clean up
-    clean_up();
+      // Create the bmp screenshot file 
+      SDL_SaveBMP(pScreenShot, "Screenshot_new.bmp"); 
 
-    return 0;
+      // Destroy the screenshot surface 
+      SDL_FreeSurface(pScreenShot); 
+   } 
+			}
+		}
+	}
+
+	//Free resources and close SDL
+	close();
+
+	return 0;
 }
