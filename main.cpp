@@ -2,8 +2,8 @@
 and may not be redistributed without written permission.*/
 
 //Using SDL, SDL_image, standard IO, and, strings
-#include <SDL.h>
-#include <SDL_image.h>
+#include </usr/include/SDL2/SDL.h>
+#include </usr/include/SDL2/SDL_image.h>
 #include <stdio.h>
 #include <string>
 #include <math.h>   
@@ -15,7 +15,7 @@ using namespace std;
 #define PI 3.14159265
 //Screen dimension constants
 const int SCREEN_WIDTH = 240;
-const int SCREEN_HEIGHT = 240;
+const int SCREEN_HEIGHT = 480;
 
 //Texture wrapper class
 class LTexture
@@ -145,7 +145,7 @@ class Marker
     public:
 		//The dimensions of the marker
 		static const int MARKER_WIDTH = 4;
-		static const int MARKER_HEIGHT = 30;
+		static const int MARKER_HEIGHT = 40;
 		//Maximum axis velocity of the marker
 		static const int MARKER_VEL = 50;
 		//Initializes the variables
@@ -169,7 +169,7 @@ class Agent
 		//The dimensions of the agent
 		static const int MARKER_WIDTH = 30;
 		static const int MARKER_HEIGHT = 60;
-		static const int MARKER_VEL = 40;
+		static const int MARKER_VEL = 50;
 		//Initializes the variables
 		Agent(float x_pos, float y_pos);
 		void handleEvent( SDL_Event& e );
@@ -198,12 +198,10 @@ SDL_Renderer* gRenderer = NULL;
 LTexture gDotTexture;
 LTexture gAgentTexture;
 
-LTexture::LTexture()
+
+LTexture::LTexture(): mTexture(NULL), mWidth(0), mHeight(0)
 {
 	//Initialize
-	mTexture = NULL;
-	mWidth = 0;
-	mHeight = 0;
 	mPixels = NULL;
 	mPitch = 0;
 }
@@ -811,7 +809,7 @@ void Agent::move( float timeStep )
 void Agent::render()
 {
      //Render markers
-	gAgentTexture.render( (int)mPosX, (int)mPosY, NULL, (int)angle );
+	gAgentTexture.render( (int)mPosX, (int)mPosY, NULL, (int)angle);
 
 }
 
@@ -830,10 +828,10 @@ bool init()
 	else
 	{
 		//Set texture filtering to linear
-		if( !SDL_SetHint( SDL_HINT_RENDER_SCALE_QUALITY, "1" ) )
+		/*if( !SDL_SetHint( SDL_HINT_RENDER_SCALE_QUALITY, "1" ) )
 		{
 			printf( "Warning: Linear texture filtering not enabled!" );
-		}
+		}*/
 
 		//Create window
 		gWindow = SDL_CreateWindow( "Car Sim", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN );
@@ -934,20 +932,25 @@ int main( int argc, char* args[] )
 
 			//The dot that will be moving around on the screen
 			Dot dot;
-                        const int num_markers = 10;
-                        const int num_agents = 1;
-                        
-                        Marker markers [num_markers] = {Marker(2 * SCREEN_WIDTH / 5, 0), 
-                                              Marker(2 * SCREEN_WIDTH / 5,2*SCREEN_HEIGHT/8),
-					      Marker(2 *SCREEN_WIDTH / 5,4*SCREEN_HEIGHT/8),
-			                      Marker(2 *SCREEN_WIDTH / 5,6*SCREEN_HEIGHT/8),
-			                      Marker(2 *SCREEN_WIDTH / 5, SCREEN_HEIGHT),
-                                              Marker(3 * SCREEN_WIDTH / 5, 0), 
-                                              Marker(3 * SCREEN_WIDTH / 5,2*SCREEN_HEIGHT/8),
-					      Marker(3 *SCREEN_WIDTH / 5,4*SCREEN_HEIGHT/8),
-			                      Marker(3 *SCREEN_WIDTH / 5,6*SCREEN_HEIGHT/8),
-			                      Marker(3 *SCREEN_WIDTH / 5, SCREEN_HEIGHT)};
-                        Agent agents [num_agents] = {Agent( 3 * SCREEN_WIDTH / 10 , -30)}; //,Agent( 7 * SCREEN_WIDTH / 10 , -60)};
+            const int num_markers = 14;
+            const int num_agents = 2;
+            
+            Marker markers [num_markers] = {Marker(2 * SCREEN_WIDTH / 5,  0), 
+                                            Marker(2 * SCREEN_WIDTH / 5,  2*SCREEN_HEIGHT/12),
+	                                        Marker(2 * SCREEN_WIDTH / 5,  4*SCREEN_HEIGHT/12),
+                                            Marker(2 * SCREEN_WIDTH / 5,  6*SCREEN_HEIGHT/12),
+                                            Marker(2 * SCREEN_WIDTH / 5,  8*SCREEN_HEIGHT/12),
+                                            Marker(2 * SCREEN_WIDTH / 5,  10*SCREEN_HEIGHT/12),
+                                            Marker(2 * SCREEN_WIDTH / 5,  SCREEN_HEIGHT),
+                                            Marker(3 * SCREEN_WIDTH / 5,  0), 
+                                            Marker(3 * SCREEN_WIDTH / 5,  2*SCREEN_HEIGHT/12),
+		                                    Marker(3 * SCREEN_WIDTH / 5,  4*SCREEN_HEIGHT/12),
+                                            Marker(3 * SCREEN_WIDTH / 5,  6*SCREEN_HEIGHT/12),
+                                            Marker(3 * SCREEN_WIDTH / 5,  8*SCREEN_HEIGHT/12),
+                                            Marker(3 * SCREEN_WIDTH / 5,  10*SCREEN_HEIGHT/12),
+                                            Marker(3 * SCREEN_WIDTH / 5,  SCREEN_HEIGHT)};
+
+            Agent agents [num_agents] = {Agent( 3 * SCREEN_WIDTH / 10 , -30), Agent( 7 * SCREEN_WIDTH / 10 , -60)};
 			//Keeps track of time between steps
 			LTimer stepTimer;
 
